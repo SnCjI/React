@@ -1,0 +1,340 @@
+import React, { createContext, useContext, useReducer, useState, useEffect } from 'react';
+import { Send, MessageSquare, Trash2, Plus } from 'lucide-react';
+
+// Tipos para TypeScript
+const MESSAGE_TYPES = {
+  ADD_MESSAGE: 'ADD_MESSAGE',
+  SET_LOADING: 'SET_LOADING',
+  CLEAR_CHAT: 'CLEAR_CHAT',
+  ADD_CONVERSATION: 'ADD_CONVERSATION',
+  SELECT_CONVERSATION: 'SELECT_CONVERSATION',
+  DELETE_CONVERSATION: 'DELETE_CONVERSATION'
+};
+
+// Estado inicial
+const initialState = {
+  conversations: [
+    { id: '1', title: 'Nueva conversación', messages: [] }
+  ],
+  currentConversationId: '1',
+  isLoading: false
+};
+
+// Reducer para manejar el estado global
+function chatReducer(state, action) {
+  switch (action.type) {
+    case MESSAGE_TYPES.ADD_MESSAGE:
+      return {
+        ...state,
+        conversations: state.conversations.map(conv =>
+          conv.id === state.currentConversationId
+            ? { ...conv, messages: [...conv.messages, action.payload] }
+            : conv
+        )
+      };
+    
+    case MESSAGE_TYPES.SET_LOADING:
+      return {
+        ...state,
+        isLoading: action.payload
+      };
+    
+    case MESSAGE_TYPES.CLEAR_CHAT:
+      return {
+        ...state,
+        conversations: state.conversations.map(conv =>
+          conv.id === state.currentConversationId
+            ? { ...conv, messages: [] }
+            : conv
+        )
+      };
+    
+    case MESSAGE_TYPES.ADD_CONVERSATION:
+      const newConv = {
+        id: Date.now().toString(),
+        title: `Conversación ${state.conversations.length + 1}`,
+        messages: []
+      };
+      return {
+        ...state,
+        conversations: [...state.conversations, newConv],
+        currentConversationId: newConv.id
+      };
+    
+    case MESSAGE_TYPES.SELECT_CONVERSATION:
+      return {
+        ...state,
+        currentConversationId: action.payload
+      };
+    
+    case MESSAGE_TYPES.DELETE_CONVERSATION:
+      const filteredConvs = state.conversations.filter(conv => conv.id !== action.payload);
+      return {
+        ...state,
+        conversations: filteredConvs.length > 0 ? filteredConvs : [{ id: Date.now().toString(), title: 'Nueva conversación', messages: [] }],
+        currentConversationId: filteredConvs.length > 0 ? filteredConvs[0].id : Date.now().toString()
+      };
+    
+    default:
+      return state;
+  }
+}
+
+// Contexto para el estado global
+const ChatContext = createContext();
+
+// Provider del contexto
+function ChatProvider({ children }) {
+  const [state, dispatch] = useReducer(chatReducer, initialState);
+  
+  return (
+    <ChatContext.Provider value={{ state, dispatch }}>
+      {children}
+    </ChatContext.Provider>
+  );
+}
+
+// Hook personalizado para usar el contexto
+function useChat() {
+  const context = useContext(ChatContext);
+  if (!context) {
+    throw new Error('useChat debe ser usado dentro de ChatProvider');
+  }
+  return context;
+}
+
+// Custom Hook para consumir Ollama
+function useOllama() {
+  const { state, dispatch } = useChat();
+  
+  const sendMessage = async (message) => {
+    // Agregar mensaje del usuario
+    dispatch({
+      type: MESSAGE_TYPES.ADD_MESSAGE,
+      payload: { id: Date.now(), text: message, sender: 'user', timestamp: new Date() }
+    });
+    
+    dispatch({ type: MESSAGE_TYPES.SET_LOADING, payload: true });
+    
+    try {
+      // Simulación de llamada a Ollama API
+      // En un proyecto real, aquí harías la llamada a: http://localhost:11434/api/generate
+      const response = await fetch('http://localhost:11434/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'deepseek-r1:1.5b',
+          prompt: message,
+          stream: false
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Error al conectar con Ollama');
+      }
+      
+      const data = await response.json();
+      
+      // Agregar respuesta de la IA
+      dispatch({
+        type: MESSAGE_TYPES.ADD_MESSAGE,
+        payload: { 
+          id: Date.now() + 1, 
+          text: data.response || 'Respuesta simulada de DevSeek R1', 
+          sender: 'ai', 
+          timestamp: new Date() 
+        }
+      });
+      
+    } catch (error) {
+      console.error('Error:', error);
+      // Respuesta simulada en caso de error
+      dispatch({
+        type: MESSAGE_TYPES.ADD_MESSAGE,
+        payload: { 
+          id: Date.now() + 1, 
+          text: `Hola! Soy DevSeek R1. Por ahora estoy simulando respuestas ya que Ollama no está disponible en este entorno. Tu mensaje fue: "${message}"`, 
+          sender: 'ai', 
+          timestamp: new Date() 
+        }
+      });
+    } finally {
+      dispatch({ type: MESSAGE_TYPES.SET_LOADING, payload: false });
+    }
+  };
+  
+  return { sendMessage, isLoading: state.isLoading };
+}
+
+// Componente de Historial (Sidebar)
+function History() {
+  const { state, dispatch } = useChat();
+  
+  const addConversation = () => {
+    dispatch({ type: MESSAGE_TYPES.ADD_CONVERSATION });
+  };
+  
+  const selectConversation = (id) => {
+    dispatch({ type: MESSAGE_TYPES.SELECT_CONVERSATION, payload: id });
+  };
+  
+  const deleteConversation = (id, e) => {
+    e.stopPropagation();
+    dispatch({ type: MESSAGE_TYPES.DELETE_CONVERSATION, payload: id });
+  };
+  
+  return (
+    <div className="w-64 bg-gray-900 text-white h-screen p-4 flex flex-col">
+      <button
+        onClick={addConversation}
+        className="flex items-center gap-2 p-3 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors mb-4"
+      >
+        <Plus size={20} />
+        Nueva conversación
+      </button>
+      
+      <div className="flex-1 overflow-y-auto">
+        <h3 className="text-sm font-semibold mb-3 text-gray-400">HISTORIAL</h3>
+        {state.conversations.map(conv => (
+          <div
+            key={conv.id}
+            onClick={() => selectConversation(conv.id)}
+            className={`flex items-center gap-2 p-2 rounded cursor-pointer group transition-colors ${
+              conv.id === state.currentConversationId ? 'bg-gray-700' : 'hover:bg-gray-800'
+            }`}
+          >
+            <MessageSquare size={16} />
+            <span className="flex-1 truncate text-sm">{conv.title}</span>
+            {state.conversations.length > 1 && (
+              <button
+                onClick={(e) => deleteConversation(conv.id, e)}
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-600 rounded"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Componente de Mensaje
+function Message({ message }) {
+  const isUser = message.sender === 'user';
+  
+  return (
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
+      <div
+        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+          isUser
+            ? 'bg-blue-500 text-white'
+            : 'bg-gray-200 text-gray-800'
+        }`}
+      >
+        <p className="text-sm">{message.text}</p>
+        <span className="text-xs opacity-70 block mt-1">
+          {message.timestamp.toLocaleTimeString()}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Componente Principal del Chat
+function ChatInterface() {
+  const { state } = useChat();
+  const { sendMessage, isLoading } = useOllama();
+  const [inputMessage, setInputMessage] = useState('');
+  
+  const currentConversation = state.conversations.find(
+    conv => conv.id === state.currentConversationId
+  );
+  
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (inputMessage.trim() && !isLoading) {
+      sendMessage(inputMessage);
+      setInputMessage('');
+    }
+  };
+  
+  return (
+    <div className="flex-1 flex flex-col">
+      {/* Header */}
+      <div className="bg-white border-b p-4">
+        <h1 className="text-xl font-semibold">ChatGPT Clone con DevSeek R1</h1>
+        <p className="text-sm text-gray-600">Powered by Ollama</p>
+      </div>
+      
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+        {currentConversation?.messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <MessageSquare size={48} className="mx-auto text-gray-400 mb-4" />
+              <h2 className="text-xl font-semibold text-gray-600 mb-2">
+                ¡Hola! Soy DevSeek R1
+              </h2>
+              <p className="text-gray-500">
+                Escribe un mensaje para comenzar la conversación
+              </p>
+            </div>
+          </div>
+        ) : (
+          currentConversation?.messages.map(message => (
+            <Message key={message.id} message={message} />
+          ))
+        )}
+        
+        {isLoading && (
+          <div className="flex justify-start mb-4">
+            <div className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg">
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                DevSeek está escribiendo...
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Input Area */}
+      <div className="bg-white border-t p-4">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
+            placeholder="Escribe tu mensaje aquí..."
+            className="flex-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={isLoading}
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={!inputMessage.trim() || isLoading}
+            className="bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Send size={20} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Componente Principal de la App
+export default function App() {
+  return (
+    <ChatProvider>
+      <div className="flex h-screen bg-gray-100">
+        <History />
+        <ChatInterface />
+      </div>
+    </ChatProvider>
+  );
+}
