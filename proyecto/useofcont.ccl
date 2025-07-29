@@ -1,0 +1,532 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { MessageSquare, Send, User, Bot, Trash2, Plus, Settings } from 'lucide-react';
+
+// ==================== 1. CREACIÓN DEL CONTEXTO ====================
+// Contexto para el tema de la aplicación
+const ThemeContext = createContext();
+
+// Contexto para el chat y mensajes
+const ChatContext = createContext();
+
+// Contexto para la configuración del usuario
+const UserContext = createContext();
+
+// ==================== 2. PROVIDERS PARA CADA CONTEXTO ====================
+
+// Provider del Tema
+function ThemeProvider({ children }) {
+  const [theme, setTheme] = useState('light');
+  const [fontSize, setFontSize] = useState('medium');
+  
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
+  
+  const changeFontSize = (size) => {
+    setFontSize(size);
+  };
+  
+  const themeValue = {
+    theme,
+    fontSize,
+    toggleTheme,
+    changeFontSize,
+    colors: theme === 'light' 
+      ? { bg: 'bg-white', text: 'text-gray-900', secondary: 'bg-gray-100' }
+      : { bg: 'bg-gray-900', text: 'text-white', secondary: 'bg-gray-800' }
+  };
+  
+  return (
+    <ThemeContext.Provider value={themeValue}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+// Provider del Chat
+function ChatProvider({ children }) {
+  const [messages, setMessages] = useState([]);
+  const [conversations, setConversations] = useState([
+    { id: '1', title: 'Primera conversación', messages: [] }
+  ]);
+  const [activeConversationId, setActiveConversationId] = useState('1');
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const addMessage = (message) => {
+    const newMessage = {
+      id: Date.now(),
+      text: message,
+      sender: 'user',
+      timestamp: new Date(),
+    };
+    
+    setConversations(prev => 
+      prev.map(conv => 
+        conv.id === activeConversationId 
+          ? { ...conv, messages: [...conv.messages, newMessage] }
+          : conv
+      )
+    );
+    
+    // Simular respuesta de la IA
+    setTimeout(() => {
+      const aiResponse = {
+        id: Date.now() + 1,
+        text: `Hola! Recibí tu mensaje: "${message}". Esta es una respuesta simulada del modelo DevSeek R1.`,
+        sender: 'ai',
+        timestamp: new Date(),
+      };
+      
+      setConversations(prev => 
+        prev.map(conv => 
+          conv.id === activeConversationId 
+            ? { ...conv, messages: [...conv.messages, aiResponse] }
+            : conv
+        )
+      );
+      setIsLoading(false);
+    }, 1500);
+    
+    setIsLoading(true);
+  };
+  
+  const createNewConversation = () => {
+    const newConv = {
+      id: Date.now().toString(),
+      title: `Conversación ${conversations.length + 1}`,
+      messages: []
+    };
+    setConversations(prev => [...prev, newConv]);
+    setActiveConversationId(newConv.id);
+  };
+  
+  const selectConversation = (id) => {
+    setActiveConversationId(id);
+  };
+  
+  const deleteConversation = (id) => {
+    if (conversations.length > 1) {
+      setConversations(prev => prev.filter(conv => conv.id !== id));
+      if (activeConversationId === id) {
+        setActiveConversationId(conversations[0].id);
+      }
+    }
+  };
+  
+  const clearCurrentConversation = () => {
+    setConversations(prev => 
+      prev.map(conv => 
+        conv.id === activeConversationId 
+          ? { ...conv, messages: [] }
+          : conv
+      )
+    );
+  };
+  
+  const chatValue = {
+    conversations,
+    activeConversationId,
+    isLoading,
+    addMessage,
+    createNewConversation,
+    selectConversation,
+    deleteConversation,
+    clearCurrentConversation,
+    getCurrentConversation: () => conversations.find(c => c.id === activeConversationId)
+  };
+  
+  return (
+    <ChatContext.Provider value={chatValue}>
+      {children}
+    </ChatContext.Provider>
+  );
+}
+
+// Provider del Usuario
+function UserProvider({ children }) {
+  const [user, setUser] = useState({
+    name: 'Usuario',
+    avatar: '👤',
+    preferences: {
+      notifications: true,
+      autoSave: true,
+      language: 'es'
+    }
+  });
+  
+  const updateUserName = (name) => {
+    setUser(prev => ({ ...prev, name }));
+  };
+  
+  const updatePreferences = (prefs) => {
+    setUser(prev => ({ 
+      ...prev, 
+      preferences: { ...prev.preferences, ...prefs }
+    }));
+  };
+  
+  const userValue = {
+    user,
+    updateUserName,
+    updatePreferences
+  };
+  
+  return (
+    <UserContext.Provider value={userValue}>
+      {children}
+    </UserContext.Provider>
+  );
+}
+
+// ==================== 3. CUSTOM HOOKS PARA USAR LOS CONTEXTOS ====================
+
+// Hook para usar el contexto del tema
+function useTheme() {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error('useTheme debe ser usado dentro de ThemeProvider');
+  }
+  return context;
+}
+
+// Hook para usar el contexto del chat
+function useChat() {
+  const context = useContext(ChatContext);
+  if (!context) {
+    throw new Error('useChat debe ser usado dentro de ChatProvider');
+  }
+  return context;
+}
+
+// Hook para usar el contexto del usuario
+function useUser() {
+  const context = useContext(UserContext);
+  if (!context) {
+    throw new Error('useUser debe ser usado dentro de UserProvider');
+  }
+  return context;
+}
+
+// ==================== 4. COMPONENTES QUE USAN LOS CONTEXTOS ====================
+
+// Componente Header que usa múltiples contextos
+function Header() {
+  const { theme, toggleTheme, colors } = useTheme();
+  const { user } = useUser();
+  const { getCurrentConversation, clearCurrentConversation } = useChat();
+  
+  const currentConv = getCurrentConversation();
+  
+  return (
+    <div className={`${colors.bg} ${colors.text} border-b p-4 flex justify-between items-center`}>
+      <div>
+        <h1 className="text-xl font-bold">DevSeek Chat Clone</h1>
+        <p className="text-sm opacity-70">
+          {currentConv?.title} - {currentConv?.messages.length || 0} mensajes
+        </p>
+      </div>
+      
+      <div className="flex items-center gap-4">
+        <span className="text-sm">Hola, {user.name}!</span>
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        >
+          {theme === 'light' ? '🌙' : '☀️'}
+        </button>
+        <button
+          onClick={clearCurrentConversation}
+          className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        >
+          <Trash2 size={18} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Componente Sidebar que usa el contexto del chat
+function Sidebar() {
+  const { colors } = useTheme();
+  const {
+    conversations,
+    activeConversationId,
+    createNewConversation,
+    selectConversation,
+    deleteConversation
+  } = useChat();
+  
+  return (
+    <div className={`w-64 ${colors.secondary} ${colors.text} h-screen p-4 border-r`}>
+      <button
+        onClick={createNewConversation}
+        className="w-full flex items-center gap-2 p-3 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors mb-4"
+      >
+        <Plus size={20} />
+        Nueva Conversación
+      </button>
+      
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold opacity-70 mb-3">CONVERSACIONES</h3>
+        {conversations.map(conv => (
+          <div
+            key={conv.id}
+            onClick={() => selectConversation(conv.id)}
+            className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer group transition-colors ${
+              conv.id === activeConversationId 
+                ? 'bg-blue-100 dark:bg-blue-900' 
+                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+          >
+            <MessageSquare size={16} />
+            <span className="flex-1 truncate text-sm">{conv.title}</span>
+            <span className="text-xs opacity-50">{conv.messages.length}</span>
+            {conversations.length > 1 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteConversation(conv.id);
+                }}
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500 hover:text-white rounded"
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Componente Message que usa el contexto del tema
+function Message({ message }) {
+  const { colors, fontSize } = useTheme();
+  const isUser = message.sender === 'user';
+  
+  const fontSizeClass = {
+    small: 'text-sm',
+    medium: 'text-base',
+    large: 'text-lg'
+  }[fontSize];
+  
+  return (
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
+      <div className="flex items-start gap-2 max-w-xs lg:max-w-md">
+        {!isUser && (
+          <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white text-sm">
+            <Bot size={16} />
+          </div>
+        )}
+        
+        <div
+          className={`px-4 py-2 rounded-lg ${
+            isUser
+              ? 'bg-blue-500 text-white'
+              : `${colors.secondary} ${colors.text} border`
+          }`}
+        >
+          <p className={fontSizeClass}>{message.text}</p>
+          <span className="text-xs opacity-70 block mt-1">
+            {message.timestamp.toLocaleTimeString()}
+          </span>
+        </div>
+        
+        {isUser && (
+          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm">
+            <User size={16} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Componente ChatArea que usa múltiples contextos
+function ChatArea() {
+  const { colors } = useTheme();
+  const { getCurrentConversation, addMessage, isLoading } = useChat();
+  const [inputMessage, setInputMessage] = useState('');
+  
+  const currentConv = getCurrentConversation();
+  
+  const handleSend = () => {
+    if (inputMessage.trim() && !isLoading) {
+      addMessage(inputMessage);
+      setInputMessage('');
+    }
+  };
+  
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+  
+  return (
+    <div className={`flex-1 flex flex-col ${colors.bg}`}>
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {currentConv?.messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <div className={`text-center ${colors.text}`}>
+              <Bot size={48} className="mx-auto mb-4 opacity-50" />
+              <h2 className="text-xl font-semibold mb-2">
+                ¡Hola! Soy DevSeek R1
+              </h2>
+              <p className="opacity-70">
+                Escribe un mensaje para comenzar la conversación
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {currentConv?.messages.map(message => (
+              <Message key={message.id} message={message} />
+            ))}
+            
+            {isLoading && (
+              <div className="flex justify-start mb-4">
+                <div className="flex items-start gap-2">
+                  <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white text-sm">
+                    <Bot size={16} />
+                  </div>
+                  <div className={`px-4 py-2 rounded-lg ${colors.secondary} ${colors.text} border`}>
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>
+                      DevSeek está escribiendo...
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      
+      {/* Input Area */}
+      <div className={`${colors.bg} border-t p-4`}>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Escribe tu mensaje aquí..."
+            className={`flex-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${colors.bg} ${colors.text}`}
+            disabled={isLoading}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!inputMessage.trim() || isLoading}
+            className="bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Send size={20} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Componente de Configuración que usa todos los contextos
+function SettingsPanel() {
+  const { fontSize, changeFontSize } = useTheme();
+  const { user, updateUserName, updatePreferences } = useUser();
+  const [showSettings, setShowSettings] = useState(false);
+  const [tempName, setTempName] = useState(user.name);
+  
+  if (!showSettings) {
+    return (
+      <button
+        onClick={() => setShowSettings(true)}
+        className="fixed bottom-4 right-4 bg-gray-600 text-white p-3 rounded-full hover:bg-gray-700 transition-colors"
+      >
+        <Settings size={20} />
+      </button>
+    );
+  }
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-96">
+        <h3 className="text-lg font-semibold mb-4">Configuración</h3>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Nombre de usuario:</label>
+            <input
+              type="text"
+              value={tempName}
+              onChange={(e) => setTempName(e.target.value)}
+              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-2">Tamaño de fuente:</label>
+            <select
+              value={fontSize}
+              onChange={(e) => changeFontSize(e.target.value)}
+              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="small">Pequeña</option>
+              <option value="medium">Mediana</option>
+              <option value="large">Grande</option>
+            </select>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={user.preferences.notifications}
+              onChange={(e) => updatePreferences({ notifications: e.target.checked })}
+              className="rounded"
+            />
+            <label className="text-sm">Activar notificaciones</label>
+          </div>
+        </div>
+        
+        <div className="flex gap-2 mt-6">
+          <button
+            onClick={() => {
+              updateUserName(tempName);
+              setShowSettings(false);
+            }}
+            className="flex-1 bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition-colors"
+          >
+            Guardar
+          </button>
+          <button
+            onClick={() => setShowSettings(false)}
+            className="flex-1 bg-gray-300 text-gray-700 p-2 rounded hover:bg-gray-400 transition-colors"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== 5. COMPONENTE PRINCIPAL CON TODOS LOS PROVIDERS ====================
+export default function App() {
+  return (
+    // Anidación de Providers - Cada uno proporciona su contexto a los hijos
+    <ThemeProvider>
+      <UserProvider>
+        <ChatProvider>
+          <div className="h-screen flex flex-col">
+            <Header />
+            <div className="flex flex-1">
+              <Sidebar />
+              <ChatArea />
+            </div>
+            <SettingsPanel />
+          </div>
+        </ChatProvider>
+      </UserProvider>
+    </ThemeProvider>
+  );
+}
